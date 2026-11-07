@@ -1,7 +1,10 @@
 # Contec CMS50F USB-C downloader
 
 Download the overnight recordings from a **Contec CMS50F** (or CMS50E) wrist pulse oximeter with a **USB-C** socket,
-and save them as CSV files you can open in a spreadsheet or analyse yourself.
+and save them as:
+
+- **`.SpO2` files that OSCAR can import**, so you can see oximetry next to your CPAP data, and
+- **CSV files** you can open in a spreadsheet or analyse yourself.
 
 It is one Python script, `cms50f_download.py`. It runs on Windows, macOS and Linux and needs no driver.
 
@@ -15,7 +18,7 @@ Contec has sold two different generations of these oximeters under the same name
 | Connector | Micro-USB-looking socket. The cable has a USB-to-serial chip built in. | **USB-C**, with an ordinary cable |
 | How the PC sees it | A serial **COM port** (Silicon Labs CP210x, sometimes PL2303 or CH340). Needs a driver. | A **USB HID device**, ID `28E9:028A`. It appears under "Human Interface Devices". No COM port, no driver. |
 | Version shown by the watch | "X.Y", for example firmware 3.7 or 4.6 | "X.Y.Z", for example hardware 2.0.0, firmware 2.0.x |
-| Works with | Contec SpO2 Assistant, OSCAR | Contec Smart Device Assistant (Windows only), [pulseoxdl](https://codeberg.org/klimd/pulseoxdl) (Linux), **this script** |
+| Works with | Contec SpO2 Assistant, OSCAR | Contec Smart Device Assistant (Windows only, no longer offered), [pulseoxdl](https://codeberg.org/klimd/pulseoxdl) (Linux), **this script** |
 
 The problem for owners of the USB-C model:
 
@@ -23,10 +26,12 @@ The problem for owners of the USB-C model:
   and it only ever supported the older serial models anyway.
 - **OSCAR cannot read the USB-C model.** OSCAR's CMS50 importer only opens serial COM ports.
   The USB-C watch has no COM port, so OSCAR never finds it, however you set it up.
-- Contec's current tool, Smart Device Assistant, is Windows-only.
-  It also deletes Auto-mode recordings from the watch after downloading them.
+- **Contec's newer tool, Smart Device Assistant, can't be downloaded either.** It isn't offered on Contec's website.
+  It was Windows-only, and it deleted Auto-mode recordings from the watch after downloading them.
 
 This script talks to the USB-C watch directly, over USB HID, and leaves the recordings on the watch.
+It saves each recording in the same `.SpO2` file format Contec's own software wrote,
+which OSCAR already knows how to import. See [Import into OSCAR](#import-into-oscar).
 
 ## What it does
 
@@ -38,7 +43,7 @@ When you run it, the script:
    - **Auto** mode: up to 99 recordings.
    - **Manual** mode: a single recording.
 4. Downloads each recording's SpO2 and pulse values, one per second, and checks every packet's checksum and order.
-5. Saves each recording as its own CSV file. A recording that was already downloaded is skipped.
+5. Saves each recording as a `.SpO2` file for OSCAR and a `.csv` file. A recording that was already downloaded is skipped.
 
 It **never deletes** anything from the watch. Delete old recordings on the watch itself when you no longer need them.
 Live streaming of readings is not supported.
@@ -90,10 +95,10 @@ Watch clock set to 15-Mar-25 07:30:12.
 2 record(s) on the watch:
   14-Mar-25 22:40:58  0 h 00 min  (Auto, 45 samples)
   14-Mar-25 22:41:05  7 h 12 min  (Auto, 25920 samples)
-  CMS50F_2025-03-14_22-40-58.csv: downloading...
-  CMS50F_2025-03-14_22-40-58.csv: saved, 45 rows, 80% valid.
-  CMS50F_2025-03-14_22-41-05.csv: downloading...
-  CMS50F_2025-03-14_22-41-05.csv: saved, 25920 rows, 97% valid.
+  CMS50F_2025-03-14_22-40-58: downloading...
+  CMS50F_2025-03-14_22-40-58: saved .csv and .SpO2, 45 seconds, 80% valid.
+  CMS50F_2025-03-14_22-41-05: downloading...
+  CMS50F_2025-03-14_22-41-05: saved .csv and .SpO2, 25920 seconds, 97% valid.
 Files are in C:\oximeter\CMS50F
 ```
 
@@ -102,8 +107,8 @@ Options:
 | Option | What it does |
 |---|---|
 | `--list` | Only list the recordings. Nothing is downloaded. |
-| `--out FOLDER` | Save the CSV files in FOLDER. By default they go in a `CMS50F` folder next to the script. |
-| `--force` | Download recordings again even if their CSV file already exists. |
+| `--out FOLDER` | Save the files in FOLDER. By default they go in a `CMS50F` folder next to the script. |
+| `--force` | Download recordings again even if their files already exist. |
 | `--debug` | Also write every USB report sent and received to `debug-<date>-<time>.log` in the output folder. Attach this file if you report a problem. |
 
 On Linux, your user needs permission to open the device.
@@ -114,10 +119,37 @@ pulseoxdl's [udev rule](https://codeberg.org/klimd/pulseoxdl/src/branch/master/u
 To make a `.exe` that runs on a PC without Python, run `build_exe.bat` on a Windows PC that has Python.
 The result is `dist\cms50f-download.exe`. It accepts the same options and waits for Enter before closing its window.
 
+## Import into OSCAR
+
+OSCAR can't talk to the USB-C watch, but it can import the `.SpO2` files this script saves.
+They are byte-for-byte the same format Contec's software produced, which OSCAR has read for years.
+
+1. Import your CPAP data for that night into OSCAR first, so OSCAR has a session to line the oximetry up with.
+2. In OSCAR, open **Data > Oximetry Wizard**, or press **F7**.
+3. Choose **Import from a datafile saved by another program, like SpO2Review**.
+   The oximeter type selected at the top doesn't matter for file import.
+4. Pick the recording's `CMS50F_….SpO2` file. The file dialog lists `.SpO2` files.
+5. When OSCAR asks when the recording started, choose one of these:
+   - **I want to use the time reported by my oximeter's built in clock.** Use this if the watch clock was right.
+     The script sets the watch clock every time it connects, so recordings made after a download have the PC's time.
+   - **I started this oximeter recording at (or near) the same time as a session on my CPAP device.**
+     Then choose the CPAP session. Use this if you put the probe on when you started the CPAP.
+6. Click **Save and Finish**, or **Sync and Save** if you synced to a CPAP session.
+
+The oximetry then appears on that night's Daily page under the CPAP graphs: SpO2, pulse, and OSCAR's desaturation and pulse-change event flags.
+OSCAR imports one file at a time, so repeat the steps for each night.
+
+Very short recordings, such as a few seconds from switching the watch on by accident, are best skipped.
+
 ## Output format
 
-One CSV file per recording, named after the recording's start time:
-`CMS50F_YYYY-MM-DD_HH-MM-SS.csv`.
+Each recording is saved twice, in files named after its start time:
+
+- `CMS50F_YYYY-MM-DD_HH-MM-SS.SpO2` is Contec's binary format, for OSCAR.
+  It holds a fixed header, the start date and time, the number of samples,
+  then one SpO2 byte and one pulse byte per second. Invalid readings are kept as the watch stored them,
+  as SpO2 127 and pulse 255, and OSCAR treats that pair as "no reading".
+- `CMS50F_YYYY-MM-DD_HH-MM-SS.csv` is plain text, for spreadsheets and your own analysis:
 
 ```text
 time,spo2,pulse
@@ -145,8 +177,13 @@ time,spo2,pulse
 
 `tests/replay_hid.py` plays real USB traffic, recorded by the pulseoxdl project, through the script.
 The recordings cover one Auto-mode and one Manual-mode recording.
-The test compares the script's CSV with the CSV that Contec's own software produced from the same data,
-row by row. It also fails if the script sends any command it does not expect, such as a delete.
+The test compares the script's output with the files Contec's own software produced from the same data:
+
+- The CSV must match Contec's CSV row by row.
+- The `.SpO2` file must be byte-for-byte identical to Contec's `.SpO2` file.
+- The `.SpO2` file must also read back correctly through a Python copy of OSCAR's `.SpO2` reader.
+
+It also fails if the script sends any command it does not expect, such as a delete.
 
 ```bash
 git clone https://codeberg.org/klimd/pulseoxdl.git
@@ -160,7 +197,9 @@ Expected result:
 
 ```text
 auto   CMS50F_2021-05-15_12-06-42.csv: 10425 rows, 0 mismatches
+auto   CMS50F_2021-05-15_12-06-42.SpO2: identical to maker's file: True, OSCAR-style parse: 10425 samples from 2021-05-15 12:06:42, ok
 manual CMS50F_2025-07-05_16-59-23.csv: 2050 rows, 0 mismatches
+manual CMS50F_2025-07-05_16-59-23.SpO2: identical to maker's file: True, OSCAR-style parse: 2050 samples from 2025-07-05 16:59:23, ok
 PASS
 ```
 

@@ -5,7 +5,8 @@ The newer Contec oximeters with a USB-C socket show up on the PC as a USB HID
 device (vendor 28E9, product 028A), not as a serial COM port. OSCAR and the old
 "SpO2 Assistant" only talk to the serial models, so they cannot see this one.
 This script talks to it directly through hidapi and saves every stored record
-as a CSV file (one row per second: time, SpO2, pulse).
+as a CSV file (one row per second: time, SpO2, pulse) and as a .SpO2 file,
+the maker's own binary format, which OSCAR can import (Oximetry > File import).
 
 Usage:
     py cms50f_download.py            # set the watch clock, download all records
@@ -36,6 +37,7 @@ import argparse
 import csv
 import datetime as dt
 import os
+import struct
 import sys
 import time
 
@@ -237,8 +239,9 @@ class Record:
         self.mode = mode        # "auto" or "manual"
 
     @property
-    def filename(self):
-        return "CMS50F_%s.csv" % self.start.strftime("%Y-%m-%d_%H-%M-%S")
+    def basename(self):
+        """File name without extension, from the start time."""
+        return "CMS50F_%s" % self.start.strftime("%Y-%m-%d_%H-%M-%S")
 
     def describe(self):
         h, rem = divmod(self.seconds, 3600)
@@ -415,6 +418,40 @@ def write_csv(path, rec, spo2, pulse):
     return valid
 
 
+def spo2_header():
+    """The fixed 1056-byte header of the .SpO2 files Contec's software writes.
+
+    Byte 0-1: offset of the record block (0x358), little-endian. OSCAR reads
+    the date at this offset + 200. The rest is copied from a file the maker's
+    software saved (via pulseoxdl's data/header): a few flag bytes and the
+    UTF-16 text "BLE", otherwise zeros.
+    """
+    h = bytearray(1056)
+    h[0:2] = struct.pack("<H", 0x358)
+    h[4] = 0x01
+    h[0x358] = 0x01
+    h[0x360:0x366] = "BLE".encode("utf-16-le")
+    return bytes(h)
+
+
+def write_spo2(path, rec, spo2, pulse):
+    """Write Contec's binary .SpO2 format, which OSCAR can import.
+
+    Layout: header, then year, month, day, hour, minute, second and the number
+    of samples as 32-bit little-endian integers, then one SpO2 byte and one
+    pulse byte per second. Raw values are kept: OSCAR treats SpO2 127 with
+    pulse 255 as "no reading", like the maker's files.
+    """
+    t = rec.start
+    tmp = path + ".part"
+    with open(tmp, "wb") as f:
+        f.write(spo2_header())
+        f.write(struct.pack("<7I", t.year, t.month, t.day, t.hour, t.minute,
+                            t.second, len(spo2)))
+        f.write(bytes(b for pair in zip(spo2, pulse) for b in pair))
+    os.replace(tmp, path)
+
+
 def default_out_dir():
     base = os.path.dirname(sys.executable if getattr(sys, "frozen", False)
                            else os.path.abspath(__file__))
@@ -440,29 +477,36 @@ def run(transport, out_dir, list_only=False, force=False, say=print):
     os.makedirs(out_dir, exist_ok=True)
     saved = []
     for rec in records:
-        path = os.path.join(out_dir, rec.filename)
-        if os.path.exists(path) and not force:
-            say("  %s: already downloaded, skipped." % rec.filename)
+        base = os.path.join(out_dir, rec.basename)
+        csv_path, spo2_path = base + ".csv", base + ".SpO2"
+        if rec.seconds == 0:
+            say("  %s: empty record, skipped." % rec.basename)
             continue
-        say("  %s: downloading..." % rec.filename)
+        if os.path.exists(csv_path) and os.path.exists(spo2_path) and not force:
+            say("  %s: already downloaded, skipped." % rec.basename)
+            continue
+        say("  %s: downloading..." % rec.basename)
         spo2, pulse = dev.download(rec)
-        valid = write_csv(path, rec, spo2, pulse)
-        pct = 100.0 * valid / rec.seconds if rec.seconds else 0
-        say("  %s: saved, %d rows, %.0f%% valid." % (rec.filename, rec.seconds, pct))
-        saved.append(path)
+        valid = write_csv(csv_path, rec, spo2, pulse)
+        write_spo2(spo2_path, rec, spo2, pulse)
+        pct = 100.0 * valid / rec.seconds
+        say("  %s: saved .csv and .SpO2, %d seconds, %.0f%% valid."
+            % (rec.basename, rec.seconds, pct))
+        saved.append(csv_path)
     return saved
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(
         description="Download records from a Contec CMS50F/CMS50E USB-C (HID) "
-                    "pulse oximeter to CSV. Records stay on the watch.")
+                    "pulse oximeter to CSV and to .SpO2 files that OSCAR can import. "
+                    "Records stay on the watch.")
     ap.add_argument("--out", default=default_out_dir(),
                     help="output folder (default: a CMS50F folder next to this script)")
     ap.add_argument("--list", action="store_true",
                     help="only list the records, do not download")
     ap.add_argument("--force", action="store_true",
-                    help="download again even if the CSV already exists")
+                    help="download again even if the files already exist")
     ap.add_argument("--debug", action="store_true",
                     help="write every USB report to debug-<time>.log in the output folder")
     ap.add_argument("--version", action="version", version=__version__)

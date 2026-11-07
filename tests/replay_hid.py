@@ -17,6 +17,7 @@ Usage:
 
 import csv
 import os
+import struct
 import sys
 import tempfile
 
@@ -113,6 +114,27 @@ def expected_rows(path):
     return rows
 
 
+def oscar_parse(path):
+    """Python copy of OSCAR's CMS50 readSpoRFile() for files ending in .spo2.
+
+    Returns (start tuple, [(spo2, pulse), ...]) as OSCAR would see them.
+    """
+    data = open(path, "rb").read()
+    pos = struct.unpack_from("<H", data, 0)[0]
+    assert data[pos] == 1, "OSCAR would warn: odd format"
+    off = pos + 200
+    year, month, day, hour, minute, second, samples = struct.unpack_from("<7I", data, off)
+    body = data[pos + 0x1C + 200:]
+    assert len(body) // samples == 2, "OSCAR would read %d bytes per sample" % (len(body) // samples)
+    recs = []
+    for i in range(0, len(body) - 1, 2):
+        o2, pr = body[i], body[i + 1]
+        if o2 == 0x7F and pr == 0xFF:
+            o2 = pr = 0
+        recs.append((o2, pr))
+    return (year, month, day, hour, minute, second), recs
+
+
 def check(testdir, mode):
     out = tempfile.mkdtemp(prefix="cms50f-test-")
     lines = []
@@ -129,6 +151,20 @@ def check(testdir, mode):
                                                 len(got), mismatches))
     for a, b in [(a, b) for a, b in zip(got, want) if a != b][:5]:
         print("   got %s  want %s" % (a, b))
+
+    # The .SpO2 file must be identical to the one the maker's software wrote,
+    # and must parse in OSCAR's reader to the same values as the CSV.
+    spo2_path = saved[0][:-4] + ".SpO2"
+    maker = open(os.path.join(testdir, "manufacturer", mode, "SpO2"), "rb").read()
+    identical = open(spo2_path, "rb").read() == maker
+    start, recs = oscar_parse(spo2_path)
+    oscar_bad = len(recs) != len(want) or any(
+        (str(o2) if o2 else "", str(pr) if pr else "") != (w[1], w[2])
+        for (o2, pr), w in zip(recs, want))
+    print("%-6s %s: identical to maker's file: %s, OSCAR-style parse: %d samples from %s, %s"
+          % (mode, os.path.basename(spo2_path), identical, len(recs),
+             "%04d-%02d-%02d %02d:%02d:%02d" % start, "ok" if not oscar_bad else "MISMATCH"))
+    mismatches += (not identical) + oscar_bad
 
     # A second run must skip the file that is already there.
     lines = []
