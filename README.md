@@ -86,15 +86,15 @@ Example output:
 
 ```text
 Connected: model 50F, user 'user'.
-Watch clock set to 07-Nov-26 08:12:03.
+Watch clock set to 15-Mar-25 07:30:12.
 2 record(s) on the watch:
-  06-Nov-26 18:26:10  0 h 01 min  (Auto, 64 samples)
-  06-Nov-26 21:34:02  6 h 33 min  (Auto, 23580 samples)
-  CMS50F_2026-11-06_18-26-10.csv: downloading...
-  CMS50F_2026-11-06_18-26-10.csv: saved, 64 rows, 92% valid.
-  CMS50F_2026-11-06_21-34-02.csv: downloading...
-  CMS50F_2026-11-06_21-34-02.csv: saved, 23580 rows, 98% valid.
-Files are in C:\Users\you\Downloads\CMS50F
+  14-Mar-25 22:40:58  0 h 00 min  (Auto, 45 samples)
+  14-Mar-25 22:41:05  7 h 12 min  (Auto, 25920 samples)
+  CMS50F_2025-03-14_22-40-58.csv: downloading...
+  CMS50F_2025-03-14_22-40-58.csv: saved, 45 rows, 80% valid.
+  CMS50F_2025-03-14_22-41-05.csv: downloading...
+  CMS50F_2025-03-14_22-41-05.csv: saved, 25920 rows, 97% valid.
+Files are in C:\oximeter\CMS50F
 ```
 
 Options:
@@ -121,9 +121,9 @@ One CSV file per recording, named after the recording's start time:
 
 ```text
 time,spo2,pulse
-2026-11-06 21:34:02,95,71
-2026-11-06 21:34:03,95,70
-2026-11-06 21:34:04,,
+2025-03-14 22:41:05,95,71
+2025-03-14 22:41:06,95,70
+2025-03-14 22:41:07,,
 ```
 
 - One row per second, oldest first.
