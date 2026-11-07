@@ -123,6 +123,7 @@ The result is `dist\cms50f-download.exe`. It accepts the same options and waits 
 
 OSCAR can't talk to the USB-C watch, but it can import the `.SpO2` files this script saves.
 They are byte-for-byte the same format Contec's software produced, which OSCAR has read for years.
+Files from a real USB-C CMS50F have been imported into OSCAR successfully this way.
 
 1. Import your CPAP data for that night into OSCAR first, so OSCAR has a session to line the oximetry up with.
 2. In OSCAR, open **Data > Oximetry Wizard**, or press **F7**.
